@@ -79,7 +79,14 @@ public final class InAppPurchasesRepositoryImpl: InAppPurchasesRepository {
                 try await AppStore.sync()
             }
         )
-        .mapError { _ in .general }
+        .mapError { error in
+            switch error {
+            case StoreKitError.userCancelled:
+                .userCancelation
+            default:
+                .general
+            }
+        }
         .ignoreOutput()
         .eraseToAnyPublisher()
     }

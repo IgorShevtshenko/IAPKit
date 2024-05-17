@@ -11,6 +11,7 @@ public enum PurchaseProductError: Error {
 
 public enum RestorePurchasesRepositoryError: Error {
     case general
+    case userCancelation
 }
 
 public protocol InAppPurchasesRepository {
