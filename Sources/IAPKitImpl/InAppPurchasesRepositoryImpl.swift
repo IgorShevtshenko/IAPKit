@@ -30,11 +30,13 @@ public final class InAppPurchasesRepositoryImpl: InAppPurchasesRepository {
     }
     
     public func fetchAvailableProducts() -> Completable<FetchProdcutsError> {
-        Future(
-            asyncFunc: { [productIds] in
-                try await Product.products(for: productIds)
-            }
-        )
+        Deferred { [productIds] in
+            Future(
+                asyncFunc: {
+                    try await Product.products(for: productIds)
+                }
+            )
+        }
         .mapError { _ in .general }
         .receive(on: DispatchQueue.main)
         .handleEvents(receiveOutput: _availableProducts.send)
@@ -43,48 +45,54 @@ public final class InAppPurchasesRepositoryImpl: InAppPurchasesRepository {
     }
     
     public func updateUserProducts() -> Completable<Never> {
-        Future(
-            asyncFunc: { [weak self] in
-                await self?.updateUserProducts()
-            }
-        )
+        Deferred {
+            Future(
+                asyncFunc: { [weak self] in
+                    await self?.updateUserProducts()
+                }
+            )
+        }
         .ignoreOutput()
         .ignoreFailure()
         .eraseToAnyPublisher()
     }
     
     public func purchase(_ product: Product) -> Completable<PurchaseProductError> {
-        Future(
-            asyncFunc: { [weak self] in
-                let result = try await product.purchase()
-                switch result {
-                case let .success(.verified(transaction)):
-                    await transaction.finish()
-                    await self?.updateUserProducts()
-                case .success, .pending, .userCancelled:
-                    break
-                @unknown default:
-                    break
+        Deferred {
+            Future(
+                asyncFunc: { [weak self] in
+                    let result = try await product.purchase()
+                    switch result {
+                    case let .success(.verified(transaction)):
+                        await transaction.finish()
+                        await self?.updateUserProducts()
+                    case .success, .pending, .userCancelled:
+                        break
+                    @unknown default:
+                        break
+                    }
                 }
-            }
-        )
+            )
+        }
         .ignoreOutput()
         .mapError { _ in .general }
         .eraseToAnyPublisher()
     }
     
     public func restorePurchases() -> Completable<RestorePurchasesRepositoryError> {
-        Future(
-            asyncFunc: {
-                try await AppStore.sync()
-            }
-        )
-        .mapError { error in
-            switch error {
-            case StoreKitError.userCancelled:
-                .userCancelation
-            default:
-                .general
+        Deferred {
+            Future(
+                asyncFunc: {
+                    try await AppStore.sync()
+                }
+            )
+            .mapError { error in
+                switch error {
+                case StoreKitError.userCancelled:
+                        .userCancelation
+                default:
+                        .general
+                }
             }
         }
         .ignoreOutput()
