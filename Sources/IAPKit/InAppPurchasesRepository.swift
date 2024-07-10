@@ -17,8 +17,9 @@ public enum RestorePurchasesRepositoryError: Error {
 public protocol InAppPurchasesRepository {
     var availableProducts: ProtectedPublisher<[Product]> { get }
     var userProductsIds: ProtectedPublisher<Set<String>> { get }
-    func updateUserProducts() -> Completable<Never>
-    func fetchAvailableProducts() -> Completable<FetchProdcutsError>
-    func purchase(_ product: Product) -> Completable<PurchaseProductError>
-    func restorePurchases() -> Completable<RestorePurchasesRepositoryError>
+    func updateUserProducts() async
+    func fetchAvailableProducts() async -> CompletableResult<FetchProdcutsError>
+    func purchase(_ product: Product) async -> CompletableResult<PurchaseProductError>
+    func restorePurchases() async  -> CompletableResult<RestorePurchasesRepositoryError>
 }
+

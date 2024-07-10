@@ -29,74 +29,55 @@ public final class InAppPurchasesRepositoryImpl: InAppPurchasesRepository {
         updates?.cancel()
     }
     
-    public func fetchAvailableProducts() -> Completable<FetchProdcutsError> {
-        Deferred { [productIds] in
-            Future(
-                asyncFunc: {
-                    try await Product.products(for: productIds)
-                }
-            )
+    public func fetchAvailableProducts() async -> CompletableResult<FetchProdcutsError> {
+        do {
+            let products = try await Product.products(for: productIds)
+            _availableProducts.send(products)
+            return .success
+        } catch {
+            return .failure(.general)
         }
-        .mapError { _ in .general }
-        .receive(on: DispatchQueue.main)
-        .handleEvents(receiveOutput: _availableProducts.send)
-        .ignoreOutput()
-        .eraseToAnyPublisher()
     }
     
-    public func updateUserProducts() -> Completable<Never> {
-        Deferred {
-            Future(
-                asyncFunc: { [weak self] in
-                    await self?.updateUserProducts()
-                }
-            )
+    @MainActor
+    public func updateUserProducts() async {
+        var purchasedProductsIds = _userProductsIds.value
+        for await result in Transaction.currentEntitlements {
+            updateProductIds(productIds: &purchasedProductsIds, with: result)
         }
-        .ignoreOutput()
-        .ignoreFailure()
-        .eraseToAnyPublisher()
+        _userProductsIds.send(purchasedProductsIds)
     }
     
-    public func purchase(_ product: Product) -> Completable<PurchaseProductError> {
-        Deferred {
-            Future(
-                asyncFunc: { [weak self] in
-                    let result = try await product.purchase()
-                    switch result {
-                    case let .success(.verified(transaction)):
-                        await transaction.finish()
-                        await self?.updateUserProducts()
-                    case .success, .pending, .userCancelled:
-                        break
-                    @unknown default:
-                        break
-                    }
-                }
-            )
+    public func purchase(_ product: Product) async -> CompletableResult<PurchaseProductError> {
+        do {
+            let result = try await product.purchase()
+            switch result {
+            case let .success(.verified(transaction)):
+                await transaction.finish()
+                await updateUserProducts()
+            case .success, .pending, .userCancelled:
+                break
+            @unknown default:
+                break
+            }
+            return .success
+        } catch {
+            return .failure(.general)
         }
-        .ignoreOutput()
-        .mapError { _ in .general }
-        .eraseToAnyPublisher()
     }
     
-    public func restorePurchases() -> Completable<RestorePurchasesRepositoryError> {
-        Deferred {
-            Future(
-                asyncFunc: {
-                    try await AppStore.sync()
-                }
-            )
-            .mapError { error in
-                switch error {
-                case StoreKitError.userCancelled:
-                        .userCancelation
-                default:
-                        .general
-                }
+    public func restorePurchases() async -> CompletableResult<RestorePurchasesRepositoryError> {
+        do {
+            try await AppStore.sync()
+            return .success
+        } catch {
+            switch error {
+            case StoreKitError.userCancelled:
+                return .failure(.userCancelation)
+            default:
+                return .failure(.general)
             }
         }
-        .ignoreOutput()
-        .eraseToAnyPublisher()
     }
     
     private func observeTransactionUpdates() -> Task<Void, Never> {
@@ -126,14 +107,5 @@ public final class InAppPurchasesRepositoryImpl: InAppPurchasesRepository {
     @MainActor
     private func updateProductIds(with purchasedProductIDs: Set<String>) {
         _userProductsIds.send(purchasedProductIDs)
-    }
-    
-    @MainActor
-    private func updateUserProducts() async {
-        var purchasedProductsIds = _userProductsIds.value
-        for await result in Transaction.currentEntitlements {
-            updateProductIds(productIds: &purchasedProductsIds, with: result)
-        }
-        _userProductsIds.send(purchasedProductsIds)
     }
 }
