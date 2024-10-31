@@ -18,7 +18,7 @@ let package = Package(
     dependencies: [
         .package(
             url: "git@github.com:IgorShevtshenko/Utils.git",
-            .upToNextMajor(from: .init(1, 2, 1))
+            .upToNextMajor(from: .init(1, 2, 3))
         ),
     ],
     targets: [
